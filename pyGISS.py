@@ -1,11 +1,21 @@
-import sys, tkinter as tk, shapefile, shapely.geometry, pyproj
+import tkinter as tk
 from tkinter import filedialog
+try:
+    import pyproj
+    import shapefile
+    import shapely.geometry
+except ImportError:
+    import sys
+    from tkinter import messagebox
+    tk.messagebox.showinfo('Some libraries are missing', 
+                    'Pyproj, Shapefile and Shapely are required (see README)')
+    sys.exit(1)
 
 class Map(tk.Canvas):
 
     projections = {
     'mercator': pyproj.Proj(init="epsg:3395"),
-    'spherical': pyproj.Proj('+proj=ortho +lat_0=47 +lon_0=28')
+    'spherical': pyproj.Proj('+proj=ortho +lon_0=28 +lat_0=47')
     }
     
     def __init__(self, root):
@@ -24,16 +34,16 @@ class Map(tk.Canvas):
         root.config(menu=menu)
         self.pack(fill='both', expand=1)
         
-    def print_coords(self, event):
-        event.x, event.y = self.canvasx(event.x), self.canvasy(event.y)
-        print(*self.to_geographical_coordinates(event.x, event.y))
+    def to_canvas_coordinates(self, longitude, latitude):
+        px, py = self.projections[self.proj](longitude, latitude)
+        return px*self.ratio + self.offset[0], -py*self.ratio + self.offset[1]
+        
+    def to_geographical_coordinates(self, x, y):
+        px, py = (x - self.offset[0])/self.ratio, (self.offset[1] - y)/self.ratio
+        return self.projections[self.proj](px, py, inverse=True)
                 
     def import_map(self):
         self.filepath ,= tk.filedialog.askopenfilenames(title='Import shapefile')
-        self.draw_map()
-        
-    def switch_proj(self):
-        self.proj = 'mercator' if self.proj == 'spherical' else 'spherical'
         self.draw_map()
         
     def draw_map(self):
@@ -49,18 +59,8 @@ class Map(tk.Canvas):
                 land = str(land)[10:-2].replace(', ', ',').replace(' ', ',')
                 coords = land.replace('(', '').replace(')', '').split(',')
                 self.create_polygon(sum((self.to_canvas_coordinates(*c) 
-                            for c in zip(coords[0::2], coords[1::2])), tuple()),    
+                                for c in zip(coords[0::2], coords[1::2])), ()),    
                                 fill='green3', outline='black', tags=('land',))
-
-    def scale_map(self, ratio, event):
-        self.ratio *= float(ratio)
-        self.offset = (self.offset[0]*ratio + event.x*(1 - ratio), 
-                       self.offset[1]*ratio + event.y*(1 - ratio))
-
-    def change_projection(self, projection):
-        self.ratio, self.offset = 1, (0, 0)
-        self.proj = projection
-        self.draw_map()
 
     def draw_water(self):
         if self.proj == 'mercator':
@@ -74,20 +74,22 @@ class Map(tk.Canvas):
             self.water_id = self.create_oval(cx - R, cy - R, cx + R, cy + R,
                         outline='black', fill='deep sky blue', tags=('water',))
         
-    def to_canvas_coordinates(self, longitude, latitude):
-        px, py = self.projections[self.proj](longitude, latitude)
-        return px*self.ratio + self.offset[0], -py*self.ratio + self.offset[1]
+    def switch_proj(self):
+        self.proj = 'mercator' if self.proj == 'spherical' else 'spherical'
+        self.draw_map()
         
-    def to_geographical_coordinates(self, x, y):
-        px, py = (x - self.offset[0])/self.ratio, (self.offset[1] - y)/self.ratio
-        return self.projections[self.proj](px, py, inverse=True)
+    def print_coords(self, event):
+        event.x, event.y = self.canvasx(event.x), self.canvasy(event.y)
+        print(*self.to_geographical_coordinates(event.x, event.y))
         
     def zoomer(self, event, factor=None):
         if not factor: factor = 1.3 if event.delta > 0 else 0.7
         event.x, event.y = self.canvasx(event.x), self.canvasy(event.y)
         self.scale('all', event.x, event.y, factor, factor)
         self.configure(scrollregion=self.bbox('all'))
-        self.scale_map(factor, event)
+        self.ratio *= float(factor)
+        self.offset = (self.offset[0]*factor + event.x*(1 - factor), 
+                       self.offset[1]*factor + event.y*(1 - factor))
         
 if str.__eq__(__name__, '__main__'):
     root_window = tk.Tk()

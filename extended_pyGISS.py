@@ -1,22 +1,41 @@
+import sys
 import tkinter as tk
-from tkinter import ttk
-from tkinter import filedialog
+from inspect import stack
+from os.path import abspath, dirname, pardir, join
+from PIL import ImageTk
+from tkinter import ttk, filedialog
 try:
     import pyproj
     import shapefile
     import shapely.geometry
 except ImportError:
-    import sys
     from tkinter import messagebox
     tk.messagebox.showinfo('Some libraries are missing', 
                     'Pyproj, Shapefile and Shapely are required (see README)')
     sys.exit(1)
     
+# prevent python from writing *.pyc files / __pycache__ folders
+sys.dont_write_bytecode = True
+
+path_app = dirname(abspath(stack()[0][1]))
+
+if path_app not in sys.path:
+    sys.path.append(path_app)
+    
 class Controller(tk.Tk):
     
-    def __init__(self):
+    def __init__(self, path_app):
         super().__init__()
         self.title('Extended PyGISS: A full-on GIS software')
+        path_icon = abspath(join(path_app, 'icons'))
+        
+        # generate the PSF icon
+        img_psf = ImageTk.Image.open(join(
+                                          path_icon, 
+                                          'icon2.png'
+                                          )
+                                    ).resize((20, 20))
+        self.psf_icon = ImageTk.PhotoImage(img_psf)
         
         for widget in (
                        'Button',
@@ -24,7 +43,7 @@ class Controller(tk.Tk):
                        'Labelframe', 
                        'Labelframe.Label', 
                        ):
-            ttk.Style().configure('T' + widget, background='lavender')
+            ttk.Style().configure('T' + widget, background='#A1DBCD')
         
         self.menu = Menu(self)
         self.menu.pack(side='left', fill='both', expand=1)
@@ -41,14 +60,18 @@ class Menu(tk.Frame):
     
     def __init__(self, controller):            
         super().__init__(controller)
-        self.configure(background='lavender')   
+        self.configure(background='#A1DBCD')   
 
+        # label frame for object creation
+        lf_creation = ttk.Labelframe(self, text='Object creation')
+        lf_creation.grid(row=1, column=0, sticky='nsew')
+        
         # label frame for object creation
         lf_selection = ttk.Labelframe(self)
         lf_selection.text = 'Object creation'
         lf_selection.grid(row=1, column=0, sticky='nsew')
         
-        ttk.Label(self, text='test').grid(row=0, column=0, in_=lf_selection)
+        ttk.Label(self, text='test').grid(row=0, column=0, in_=lf_creation)
         
 class Map(tk.Canvas):
 
@@ -131,5 +154,5 @@ class Map(tk.Canvas):
                        self.offset[1]*factor + event.y*(1 - factor))
         
 if str.__eq__(__name__, '__main__'):
-    controller = Controller()
+    controller = Controller(path_app)
     controller.mainloop()

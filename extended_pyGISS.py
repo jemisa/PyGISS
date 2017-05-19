@@ -29,13 +29,21 @@ class Controller(tk.Tk):
         self.title('Extended PyGISS: A full-on GIS software')
         path_icon = abspath(join(path_app, 'icons'))
         
-        # generate the PSF icon
+        # generate the PSF tk images
         img_psf = ImageTk.Image.open(join(
                                           path_icon, 
-                                          'icon2.png'
+                                          'node.png'
                                           )
-                                    ).resize((20, 20))
-        self.psf_icon = ImageTk.PhotoImage(img_psf)
+                                    )
+                                    
+        selected_img_psf = ImageTk.Image.open(join(
+                                          path_icon, 
+                                          'selected_node.png'
+                                          )
+                                    )
+        self.psf_button_image = ImageTk.PhotoImage(img_psf.resize((100, 100)))
+        self.node_image = ImageTk.PhotoImage(img_psf.resize((40, 40)))
+        self.selected_node_image = ImageTk.PhotoImage(selected_img_psf.resize((40, 40)))
         
         for widget in (
                        'Button',
@@ -56,22 +64,49 @@ class Controller(tk.Tk):
         menu.add_command(label="Switch projection", command=self.map.switch_proj)
         self.config(menu=menu)
         
+        # if motion is called, the left-click button was released and we 
+        # can stop the drag and drop process
+        self.bind_all('<Motion>', self.stop_drag_and_drop)
+        self.bind_all('<B1-Motion>', lambda _: _)
+        self.drag_and_drop = False
+            
+    def stop_drag_and_drop(self, event):
+        self.drag_and_drop = False
+        
+    def start_drag_and_drop(self, event):
+        self.drag_and_drop = True
+        
 class Menu(tk.Frame):
     
     def __init__(self, controller):            
         super().__init__(controller)
         self.configure(background='#A1DBCD')   
 
-        # label frame for object creation
-        lf_creation = ttk.Labelframe(self, text='Object creation')
-        lf_creation.grid(row=1, column=0, sticky='nsew')
+        lf_creation = ttk.Labelframe(
+                                     self, 
+                                     text = 'Object creation', 
+                                     padding = (6, 6, 12, 12)
+                                     )
+        lf_creation.grid(row=0, column=0, sticky='nsew')
         
-        # label frame for object creation
-        lf_selection = ttk.Labelframe(self)
-        lf_selection.text = 'Object creation'
-        lf_selection.grid(row=1, column=0, sticky='nsew')
+        psf_object_label = tk.Label(
+                               self, 
+                               image = controller.psf_button_image, 
+                               relief = 'flat', 
+                               bg = '#A1DBCD'
+                               )
+        psf_object_label.bind('<Button-1>', controller.start_drag_and_drop)
+        psf_object_label.grid(row=0, column=0, sticky='ns', in_=lf_creation)
         
-        ttk.Label(self, text='test').grid(row=0, column=0, in_=lf_creation)
+        lf_projection = ttk.Labelframe(
+                                       self, 
+                                       text = 'Projection settings', 
+                                       padding = (6, 6, 12, 12)
+                                       )
+        lf_projection.grid(row=1, column=0, sticky='nsew')
+        
+        change_projection_button = tk.Button(self, text='Change projection')
+        change_projection_button.grid(row=0, column=0, in_=lf_projection)
         
 class Map(tk.Canvas):
 
@@ -82,6 +117,14 @@ class Map(tk.Canvas):
     
     def __init__(self, controller):
         super().__init__(controller, bg='white', width=1300, height=800)
+        self.controller = controller
+        
+        self.node_id_to_node = {}
+        self.start_position = [None]*2
+        self.start_pos_main_node = [None]*2
+        self.dict_start_position = {}
+        self.selected_nodes = set()
+        
         self.proj = 'mercator'
         self.ratio, self.offset = 1, (0, 0)
         self.bind('<ButtonPress-1>', self.print_coords)
@@ -90,6 +133,18 @@ class Map(tk.Canvas):
         self.bind('<Button-5>', lambda e: self.zoomer(e, 0.7))
         self.bind('<ButtonPress-3>', lambda e: self.scan_mark(e.x, e.y))
         self.bind('<B3-Motion>', lambda e: self.scan_dragto(e.x, e.y, gain=1))
+        self.bind('<Enter>', self.drag_and_drop, add='+')
+        self.bind('<Button-1>', self.find_closest_node)
+        self.bind('<ButtonPress-1>', self.start_point_select_objects)
+        self.bind('<B1-Motion>', self.rectangle_drawing)
+        self.bind('<ButtonRelease-1>', self.end_point_select_nodes)
+        
+    # @update_coordinates decorator
+    def update_coordinates(function):
+        def wrapper(self, event, *others):
+            event.x, event.y = self.canvasx(event.x), self.canvasy(event.y)
+            function(self, event, *others)
+        return wrapper
         
     def to_canvas_coordinates(self, longitude, latitude):
         px, py = self.projections[self.proj](longitude, latitude)
@@ -139,19 +194,109 @@ class Map(tk.Canvas):
         self.proj = 'mercator' if self.proj == 'spherical' else 'spherical'
         self.draw_map()
         
+    @update_coordinates
     def print_coords(self, event):
-        event.x, event.y = self.canvasx(event.x), self.canvasy(event.y)
         print(*self.to_geographical_coordinates(event.x, event.y))
         
+    @update_coordinates
     def zoomer(self, event, factor=None):
         if not factor: 
             factor = 1.3 if event.delta > 0 else 0.7
-        event.x, event.y = self.canvasx(event.x), self.canvasy(event.y)
         self.scale('all', event.x, event.y, factor, factor)
         self.configure(scrollregion=self.bbox('all'))
         self.ratio *= float(factor)
         self.offset = (self.offset[0]*factor + event.x*(1 - factor), 
                        self.offset[1]*factor + event.y*(1 - factor))
+                       
+    def drag_and_drop(self, event):
+        if controller.drag_and_drop:
+            self.create_object(event)
+            controller.drag_and_drop = False
+            
+    @update_coordinates
+    def create_object(self, event):
+        id = self.create_image(
+                               event.x - 20, 
+                               event.y - 20,
+                               image = controller.node_image, 
+                               anchor = 'nw', 
+                               tags = ('node',)
+                               )
+        node = PSF_Object(id, event.x, event.y)
+        self.node_id_to_node[id] = node
+        
+    @update_coordinates
+    def find_closest_node(self, event):
+        self.dict_start_position.clear()
+        self.drag_item = self.find_closest(event.x, event.y)[0]
+        main_node_selected = self.object_id_to_object[self.drag_item]
+        self.start_pos_main_node = event.x, event.y
+        if main_node_selected in self.so['node']:
+            for sn in self.so['node']:
+                self.dict_start_position[sn] = [sn.x, sn.y]
+        else:
+            self.unselect_all()
+            self.dict_start_position[main_node_selected] = self.start_pos_main_node 
+            self.select_objects(main_node_selected)
+            
+    def select_objects(self, *objects):
+        for obj in objects:
+            self.selected_nodes.add(obj)
+            self.itemconfig(
+                            obj.id, 
+                            image = self.controller.selected_node_image
+                            )
+                
+    def unselect_objects(self, *objects):
+        for obj in objects:
+            self.selected_nodes.discard(obj)
+            self.itemconfig(
+                            obj.id, 
+                            image = self.controller.node_image
+                            )
+                
+    def unselect_all(self):
+        self.unselect_objects(*self.selected_nodes)
+        
+    @update_coordinates
+    def start_point_select_objects(self, event):
+        # create the temporary line, only if there is nothing below
+        # this is to avoid drawing a rectangle when moving a node
+        below = self.find_overlapping(event.x-1, event.y-1, event.x+1, event.y+1)
+        tags_below = ''.join(''.join(self.itemcget(id, 'tags')) for id in below)
+        # if no object is below the selection process can start
+        if not below:
+            self.unselect_all()
+            self.start_position = event.x, event.y
+            self.temp_rectangle = self.create_rectangle(event.x, event.y, event.x, event.y)
+            self.tag_raise(self.temp_rectangle)
+
+    @update_coordinates
+    def rectangle_drawing(self, event):
+        # draw the line only if they were created in the first place
+        if self.start_position != [None]*2:
+            # update the position of the temporary lines
+            x0, y0 = self.start_position
+            self.coords(self.temp_rectangle, x0, y0, event.x, event.y)
+    
+    @update_coordinates
+    def end_point_select_nodes(self, event):
+        if self.start_position != [None]*2:
+            # delete the temporary lines
+            self.delete(self.temp_rectangle)
+            # select all nodes enclosed in the rectangle
+            start_x, start_y = self.start_position
+            for obj in self.find_enclosed(start_x, start_y, event.x, event.y):
+                    enclosed_obj = self.node_id_to_node[obj]
+                    self.select_objects(enclosed_obj)
+            self.start_position = [None]*2
+        
+class PSF_Object():
+        
+    def __init__(self, id, x, y):
+        self.id = id
+        self.x = x
+        self.y = y
         
 if str.__eq__(__name__, '__main__'):
     controller = Controller(path_app)

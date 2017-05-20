@@ -120,6 +120,7 @@ class Map(tk.Canvas):
         self.controller = controller
         
         self.node_id_to_node = {}
+        self.drag_item = None
         self.start_position = [None]*2
         self.start_pos_main_node = [None]*2
         self.dict_start_position = {}
@@ -127,17 +128,17 @@ class Map(tk.Canvas):
         
         self.proj = 'mercator'
         self.ratio, self.offset = 1, (0, 0)
-        self.bind('<ButtonPress-1>', self.print_coords)
         self.bind('<MouseWheel>', self.zoomer)
         self.bind('<Button-4>', lambda e: self.zoomer(e, 1.3))
         self.bind('<Button-5>', lambda e: self.zoomer(e, 0.7))
         self.bind('<ButtonPress-3>', lambda e: self.scan_mark(e.x, e.y))
         self.bind('<B3-Motion>', lambda e: self.scan_dragto(e.x, e.y, gain=1))
         self.bind('<Enter>', self.drag_and_drop, add='+')
-        self.bind('<Button-1>', self.find_closest_node)
-        self.bind('<ButtonPress-1>', self.start_point_select_objects)
+        self.bind('<ButtonPress-1>', self.start_point_select_objects, add='+')
         self.bind('<B1-Motion>', self.rectangle_drawing)
-        self.bind('<ButtonRelease-1>', self.end_point_select_nodes)
+        self.bind('<ButtonRelease-1>', self.end_point_select_nodes, add='+')
+        self.tag_bind('node', '<Button-1>', self.find_closest_node)
+        self.tag_bind('node', '<B1-Motion>', self.node_motion)
         
     # @update_coordinates decorator
     def update_coordinates(function):
@@ -195,10 +196,6 @@ class Map(tk.Canvas):
         self.draw_map()
         
     @update_coordinates
-    def print_coords(self, event):
-        print(*self.to_geographical_coordinates(event.x, event.y))
-        
-    @update_coordinates
     def zoomer(self, event, factor=None):
         if not factor: 
             factor = 1.3 if event.delta > 0 else 0.7
@@ -207,14 +204,19 @@ class Map(tk.Canvas):
         self.ratio *= float(factor)
         self.offset = (self.offset[0]*factor + event.x*(1 - factor), 
                        self.offset[1]*factor + event.y*(1 - factor))
+        # we update all node's coordinates
+        for node_id, node in self.node_id_to_node.items():
+            node.x, node.y = self.coords(node_id)
+            self.update_node_label(node, 20)
                        
     def drag_and_drop(self, event):
         if controller.drag_and_drop:
             self.create_object(event)
             controller.drag_and_drop = False
-            
+                        
     @update_coordinates
     def create_object(self, event):
+        # create the node's image
         id = self.create_image(
                                event.x - 20, 
                                event.y - 20,
@@ -222,17 +224,32 @@ class Map(tk.Canvas):
                                anchor = 'nw', 
                                tags = ('node',)
                                )
-        node = PSF_Object(id, event.x, event.y)
+        # create the node's label
+        label_id = self.create_text(
+                                    event.x - 5, 
+                                    event.y + 30
+                                    )
+        # create the node object
+        node = PSF_Object(id, label_id, event.x, event.y)
+        # update the value of its label
+        self.update_node_label(node)
+        # store the node in the 'node ID' |-> node dictionnary
         self.node_id_to_node[id] = node
         
+    def update_node_label(self, node, translate=0):
+        lon, lat = self.to_geographical_coordinates(node.x, node.y)
+        label = '({:.5f}, {:.5f})'.format(lon, lat)
+        self.coords(node.label_id, node.x - 5 + translate, node.y + 30 + translate)
+        self.itemconfig(node.label_id, text=label)
+                    
     @update_coordinates
     def find_closest_node(self, event):
         self.dict_start_position.clear()
         self.drag_item = self.find_closest(event.x, event.y)[0]
-        main_node_selected = self.object_id_to_object[self.drag_item]
+        main_node_selected = self.node_id_to_node[self.drag_item]
         self.start_pos_main_node = event.x, event.y
-        if main_node_selected in self.so['node']:
-            for sn in self.so['node']:
+        if main_node_selected in self.selected_nodes:
+            for sn in self.selected_nodes:
                 self.dict_start_position[sn] = [sn.x, sn.y]
         else:
             self.unselect_all()
@@ -265,10 +282,15 @@ class Map(tk.Canvas):
         below = self.find_overlapping(event.x-1, event.y-1, event.x+1, event.y+1)
         tags_below = ''.join(''.join(self.itemcget(id, 'tags')) for id in below)
         # if no object is below the selection process can start
-        if not below:
+        if 'node' not in tags_below:
             self.unselect_all()
             self.start_position = event.x, event.y
-            self.temp_rectangle = self.create_rectangle(event.x, event.y, event.x, event.y)
+            self.temp_rectangle = self.create_rectangle(
+                                                        event.x, 
+                                                        event.y, 
+                                                        event.x, 
+                                                        event.y
+                                                        )
             self.tag_raise(self.temp_rectangle)
 
     @update_coordinates
@@ -287,14 +309,38 @@ class Map(tk.Canvas):
             # select all nodes enclosed in the rectangle
             start_x, start_y = self.start_position
             for obj in self.find_enclosed(start_x, start_y, event.x, event.y):
+                if obj in self.node_id_to_node:
                     enclosed_obj = self.node_id_to_node[obj]
                     self.select_objects(enclosed_obj)
             self.start_position = [None]*2
+            
+    @update_coordinates
+    def node_motion(self, event):
+        node = self.node_id_to_node[self.drag_item]
+        for selected_node in self.selected_nodes:
+            # the main node initial position, the main node current position, 
+            # and the other node initial position form a rectangle.
+            # we find the position of the fourth vertix.
+            x0, y0 = self.start_pos_main_node
+            x1, y1 = self.dict_start_position[selected_node]
+            selected_node.x = x1 + (event.x - x0)
+            selected_node.y = y1 + (event.y - y0)
+            # move the node itself
+            self.coords(
+                        selected_node.id, 
+                        selected_node.x - 20,
+                        selected_node.y - 20
+                        )
+            # update the label
+            self.update_node_label(selected_node)
         
 class PSF_Object():
+    
+    type = 'node'
         
-    def __init__(self, id, x, y):
+    def __init__(self, id, label_id, x, y):
         self.id = id
+        self.label_id = label_id
         self.x = x
         self.y = y
         

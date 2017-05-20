@@ -24,6 +24,11 @@ if path_app not in sys.path:
     
 class Controller(tk.Tk):
     
+    projections = {
+    'Mercator': pyproj.Proj(init="epsg:3395"),
+    'Azimuthal orthographic': pyproj.Proj('+proj=ortho +lon_0=28 +lat_0=47')
+    }
+    
     def __init__(self, path_app):
         super().__init__()
         self.title('Extended PyGISS: A full-on GIS software')
@@ -77,7 +82,7 @@ class Controller(tk.Tk):
         self.drag_and_drop = True
         
 class Menu(tk.Frame):
-    
+        
     def __init__(self, controller):            
         super().__init__(controller)
         self.configure(background='#A1DBCD')   
@@ -87,7 +92,7 @@ class Menu(tk.Frame):
                                      text = 'Object creation', 
                                      padding = (6, 6, 12, 12)
                                      )
-        lf_creation.grid(row=0, column=0, sticky='nsew')
+        lf_creation.grid(row=0, column=0, padx=5, pady=5)
         
         psf_object_label = tk.Label(
                                self, 
@@ -96,24 +101,24 @@ class Menu(tk.Frame):
                                bg = '#A1DBCD'
                                )
         psf_object_label.bind('<Button-1>', controller.start_drag_and_drop)
-        psf_object_label.grid(row=0, column=0, sticky='ns', in_=lf_creation)
+        psf_object_label.grid(row=0, column=0, padx=25, in_=lf_creation)
         
         lf_projection = ttk.Labelframe(
                                        self, 
                                        text = 'Projection settings', 
                                        padding = (6, 6, 12, 12)
                                        )
-        lf_projection.grid(row=1, column=0, sticky='nsew')
+        lf_projection.grid(row=1, column=0, padx=5, pady=5)
         
-        change_projection_button = tk.Button(self, text='Change projection')
-        change_projection_button.grid(row=0, column=0, in_=lf_projection)
+        self.projection_list = ttk.Combobox(self, width=15)
+        self.projection_list['values'] = tuple(controller.projections)
+        self.projection_list.current(0)
+        self.projection_list.grid(row=0, column=0, in_=lf_projection)
+        
+        change_projection_button = ttk.Button(self, text='Change projection')
+        change_projection_button.grid(row=1, column=0, in_=lf_projection)
         
 class Map(tk.Canvas):
-
-    projections = {
-    'mercator': pyproj.Proj(init="epsg:3395"),
-    'spherical': pyproj.Proj('+proj=ortho +lon_0=28 +lat_0=47')
-    }
     
     def __init__(self, controller):
         super().__init__(controller, bg='white', width=1300, height=800)
@@ -126,7 +131,7 @@ class Map(tk.Canvas):
         self.dict_start_position = {}
         self.selected_nodes = set()
         
-        self.proj = 'mercator'
+        self.proj = 'Mercator'
         self.ratio, self.offset = 1, (0, 0)
         self.bind('<MouseWheel>', self.zoomer)
         self.bind('<Button-4>', lambda e: self.zoomer(e, 1.3))
@@ -148,12 +153,12 @@ class Map(tk.Canvas):
         return wrapper
         
     def to_canvas_coordinates(self, longitude, latitude):
-        px, py = self.projections[self.proj](longitude, latitude)
+        px, py = self.controller.projections[self.proj](longitude, latitude)
         return px*self.ratio + self.offset[0], -py*self.ratio + self.offset[1]
         
     def to_geographical_coordinates(self, x, y):
         px, py = (x - self.offset[0])/self.ratio, (self.offset[1] - y)/self.ratio
-        return self.projections[self.proj](px, py, inverse=True)
+        return self.controller.projections[self.proj](px, py, inverse=True)
                 
     def import_map(self):
         self.filepath ,= tk.filedialog.askopenfilenames(title='Import shapefile')
@@ -180,7 +185,7 @@ class Map(tk.Canvas):
                                     )
 
     def draw_water(self):
-        if self.proj == 'mercator':
+        if self.proj == 'Mercator':
             x0, y0 = self.to_canvas_coordinates(-180, 84)
             x1, y1 = self.to_canvas_coordinates(180, -84)
             self.water_id = self.create_rectangle(x1, y1, x0, y0,
@@ -233,7 +238,7 @@ class Map(tk.Canvas):
         node = PSF_Object(id, label_id, event.x, event.y)
         # update the value of its label
         self.update_node_label(node)
-        # store the node in the 'node ID' |-> node dictionnary
+        # store the node in the (node ID -> node) dictionnary
         self.node_id_to_node[id] = node
         
     def update_node_label(self, node, translate=0):

@@ -71,13 +71,24 @@ class Controller(tk.Tk):
         self.drag_and_drop = False
         
         self.image = None
-        self.bind_all('<B1-Motion>', lambda _:_)
+        self.bind_all('<B1-Motion>', self.move_image)
+        self.bind_all('<ButtonRelease-1>', self.destroy_image)
+        
+    def destroy_image(self, _):
+        if self.image:
+            self.image.place_forget()
+        
+    def move_image(self, event):
+        if self.image and event.x > 190:
+            self.image.place(x=event.x + 56, y=event.y + 28)
             
     def stop_drag_and_drop(self, event):
         self.drag_and_drop = False
+        self.image = None
         
     def start_drag_and_drop(self, event):
         self.drag_and_drop = True
+        self.image = tk.Label(self, image=self.node_image, relief='flat', bg='white')
         
 class Menu(tk.Frame):
         

@@ -24,10 +24,7 @@ if path_app not in sys.path:
     
 class Controller(tk.Tk):
     
-    projections = {
-    'Mercator': pyproj.Proj(init="epsg:3395"),
-    'Azimuthal orthographic': pyproj.Proj('+proj=ortho +lon_0=28 +lat_0=47')
-    }
+    size = 10
     
     def __init__(self, path_app):
         super().__init__()
@@ -47,8 +44,8 @@ class Controller(tk.Tk):
                                           )
                                     )
         self.psf_button_image = ImageTk.PhotoImage(img_psf.resize((100, 100)))
-        self.node_image = ImageTk.PhotoImage(img_psf.resize((40, 40)))
-        self.selected_node_image = ImageTk.PhotoImage(selected_img_psf.resize((40, 40)))
+        self.node_image = ImageTk.PhotoImage(img_psf.resize((20, 20)))
+        self.selected_node_image = ImageTk.PhotoImage(selected_img_psf.resize((20, 20)))
         
         for widget in (
                        'Button',
@@ -57,16 +54,15 @@ class Controller(tk.Tk):
                        'Labelframe.Label', 
                        ):
             ttk.Style().configure('T' + widget, background='#A1DBCD')
+            
+        self.map = Map(self)
+        self.map.pack(side='right', fill='both', expand=1)
         
         self.menu = Menu(self)
-        self.menu.pack(side='left', fill='both', expand=1)
-        
-        self.map = Map(self)
-        self.map.pack(fill='both', expand=1)
+        self.menu.pack(side='right', fill='both', expand=1)
         
         menu = tk.Menu(self)
         menu.add_command(label="Import shapefile", command=self.map.import_map)
-        menu.add_command(label="Switch projection", command=self.map.switch_proj)
         self.config(menu=menu)
         
         # if motion is called, the left-click button was released and we 
@@ -111,26 +107,33 @@ class Menu(tk.Frame):
         lf_projection.grid(row=1, column=0, padx=5, pady=5)
         
         self.projection_list = ttk.Combobox(self, width=15)
-        self.projection_list['values'] = tuple(controller.projections)
+        self.projection_list['values'] = tuple(controller.map.projections)
         self.projection_list.current(0)
         self.projection_list.grid(row=0, column=0, in_=lf_projection)
         
-        change_projection_button = ttk.Button(self, text='Change projection')
+        change_projection_button = ttk.Button(self, text='Change projection',
+                                    command=controller.map.change_projection)
         change_projection_button.grid(row=1, column=0, in_=lf_projection)
         
 class Map(tk.Canvas):
     
+    projections = {
+    'Mercator': pyproj.Proj(init="epsg:3395"),
+    'Azimuthal orthographic': pyproj.Proj('+proj=ortho +lon_0=28 +lat_0=47')
+    }
+    
+    size = 10
+    
     def __init__(self, controller):
         super().__init__(controller, bg='white', width=1300, height=800)
         self.controller = controller
-        
         self.node_id_to_node = {}
         self.drag_item = None
         self.start_position = [None]*2
         self.start_pos_main_node = [None]*2
         self.dict_start_position = {}
         self.selected_nodes = set()
-        
+        self.filepath = None
         self.proj = 'Mercator'
         self.ratio, self.offset = 1, (0, 0)
         self.bind('<MouseWheel>', self.zoomer)
@@ -153,19 +156,26 @@ class Map(tk.Canvas):
         return wrapper
         
     def to_canvas_coordinates(self, longitude, latitude):
-        px, py = self.controller.projections[self.proj](longitude, latitude)
+        px, py = self.projections[self.proj](longitude, latitude)
         return px*self.ratio + self.offset[0], -py*self.ratio + self.offset[1]
         
     def to_geographical_coordinates(self, x, y):
         px, py = (x - self.offset[0])/self.ratio, (self.offset[1] - y)/self.ratio
-        return self.controller.projections[self.proj](px, py, inverse=True)
+        return self.projections[self.proj](px, py, inverse=True)
                 
     def import_map(self):
-        self.filepath ,= tk.filedialog.askopenfilenames(title='Import shapefile')
+        filepath = tk.filedialog.askopenfilenames(title='Import shapefile')
+        if not filepath: 
+            return
+        else: 
+            self.filepath ,= filepath
         self.draw_map()
         
     def draw_map(self):
+        if not self.filepath:
+            return
         self.delete('land', 'water')
+        self.ratio, self.offset = 1, (0, 0)
         self.draw_water()
         sf = shapefile.Reader(self.filepath)       
         polygons = sf.shapes() 
@@ -196,9 +206,19 @@ class Map(tk.Canvas):
             self.water_id = self.create_oval(cx - R, cy - R, cx + R, cy + R,
                         outline='black', fill='deep sky blue', tags=('water',))
         
-    def switch_proj(self):
-        self.proj = 'mercator' if self.proj == 'spherical' else 'spherical'
+    def change_projection(self):
+        self.proj = self.controller.menu.projection_list.get()
         self.draw_map()
+        self.redraw_nodes()
+        
+    def redraw_nodes(self):
+        for node_id, node in self.node_id_to_node.items():
+            cx, cy = self.to_canvas_coordinates(node.longitude, node.latitude)
+            node.x, node.y = cx - 10, cy - 10
+            self.coords(node_id, cx, cy)
+            self.update_node_label(node)
+            self.tag_raise(node_id)
+            self.tag_raise(node.label_id)
         
     @update_coordinates
     def zoomer(self, event, factor=None):
@@ -212,7 +232,14 @@ class Map(tk.Canvas):
         # we update all node's coordinates
         for node_id, node in self.node_id_to_node.items():
             node.x, node.y = self.coords(node_id)
-            self.update_node_label(node, 20)
+            self.update_node_label(node, 10)
+            
+    def update_node_label(self, node, translate=0):
+        node.longitude, node.latitude = self.to_geographical_coordinates(
+                                                                node.x, node.y)
+        label = '({:.5f}, {:.5f})'.format(node.longitude, node.latitude)
+        self.coords(node.label_id, node.x - 5 + translate, node.y + 30 + translate)
+        self.itemconfig(node.label_id, text=label)
                        
     def drag_and_drop(self, event):
         if controller.drag_and_drop:
@@ -223,8 +250,8 @@ class Map(tk.Canvas):
     def create_object(self, event):
         # create the node's image
         id = self.create_image(
-                               event.x - 20, 
-                               event.y - 20,
+                               event.x - 10, 
+                               event.y - 10,
                                image = controller.node_image, 
                                anchor = 'nw', 
                                tags = ('node',)
@@ -235,17 +262,11 @@ class Map(tk.Canvas):
                                     event.y + 30
                                     )
         # create the node object
-        node = PSF_Object(id, label_id, event.x, event.y)
+        node = PSF_Object(id, label_id, event.x - 10, event.y - 10)
         # update the value of its label
         self.update_node_label(node)
         # store the node in the (node ID -> node) dictionnary
         self.node_id_to_node[id] = node
-        
-    def update_node_label(self, node, translate=0):
-        lon, lat = self.to_geographical_coordinates(node.x, node.y)
-        label = '({:.5f}, {:.5f})'.format(lon, lat)
-        self.coords(node.label_id, node.x - 5 + translate, node.y + 30 + translate)
-        self.itemconfig(node.label_id, text=label)
                     
     @update_coordinates
     def find_closest_node(self, event):
@@ -328,13 +349,13 @@ class Map(tk.Canvas):
             # we find the position of the fourth vertix.
             x0, y0 = self.start_pos_main_node
             x1, y1 = self.dict_start_position[selected_node]
-            selected_node.x = x1 + (event.x - x0)
-            selected_node.y = y1 + (event.y - y0)
+            selected_node.x = x1 + (event.x - x0) - 10
+            selected_node.y = y1 + (event.y - y0) - 10
             # move the node itself
             self.coords(
                         selected_node.id, 
-                        selected_node.x - 20,
-                        selected_node.y - 20
+                        selected_node.x,
+                        selected_node.y
                         )
             # update the label
             self.update_node_label(selected_node)
@@ -346,8 +367,8 @@ class PSF_Object():
     def __init__(self, id, label_id, x, y):
         self.id = id
         self.label_id = label_id
-        self.x = x
-        self.y = y
+        self.x, self.y = x, y
+        self.longitude, self.latitude = 0, 0
         
 if str.__eq__(__name__, '__main__'):
     controller = Controller(path_app)

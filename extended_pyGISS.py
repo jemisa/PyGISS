@@ -71,24 +71,13 @@ class Controller(tk.Tk):
         self.drag_and_drop = False
         
         self.image = None
-        self.bind_all('<B1-Motion>', self.move_image)
-        self.bind_all('<ButtonRelease-1>', self.destroy_image)
-        
-    def destroy_image(self, _):
-        if self.image:
-            self.image.place_forget()
-        
-    def move_image(self, event):
-        if self.image and event.x > 190:
-            self.image.place(x=event.x + 56, y=event.y + 28)
-            
+        self.bind_all('<B1-Motion>', lambda _:_)
+
     def stop_drag_and_drop(self, event):
         self.drag_and_drop = False
-        self.image = None
         
     def start_drag_and_drop(self, event):
         self.drag_and_drop = True
-        self.image = tk.Label(self, image=self.node_image, relief='flat', bg='white')
         
 class Menu(tk.Frame):
         
@@ -127,6 +116,16 @@ class Menu(tk.Frame):
         change_projection_button = ttk.Button(self, text='Change projection',
                             command=controller.map.change_projection, width=20)
         change_projection_button.grid(row=1, column=0, pady=5, in_=lf_projection)
+        
+class PSF_Object():
+    
+    type = 'node'
+        
+    def __init__(self, id, label_id, x, y):
+        self.id = id
+        self.label_id = label_id
+        self.x, self.y = x, y
+        self.longitude, self.latitude = 0, 0
         
 class Map(tk.Canvas):
     
@@ -206,6 +205,7 @@ class Map(tk.Canvas):
                                     outline = 'black', 
                                     tags = ('land',)
                                     )
+        self.redraw_nodes()
 
     def draw_water(self):
         if self.proj == 'Mercator':
@@ -222,7 +222,6 @@ class Map(tk.Canvas):
     def change_projection(self):
         self.proj = self.controller.menu.projection_list.get()
         self.draw_map()
-        self.redraw_nodes()
         
     def redraw_nodes(self):
         for node_id, node in self.node_id_to_node.items():
@@ -371,16 +370,6 @@ class Map(tk.Canvas):
                         )
             # update the label
             self.update_node_label(selected_node)
-        
-class PSF_Object():
-    
-    type = 'node'
-        
-    def __init__(self, id, label_id, x, y):
-        self.id = id
-        self.label_id = label_id
-        self.x, self.y = x, y
-        self.longitude, self.latitude = 0, 0
         
 if str.__eq__(__name__, '__main__'):
     controller = Controller(path_app)

@@ -68,8 +68,10 @@ class Controller(tk.Tk):
         # if motion is called, the left-click button was released and we 
         # can stop the drag and drop process
         self.bind_all('<Motion>', self.stop_drag_and_drop)
-        self.bind_all('<B1-Motion>', lambda _: _)
         self.drag_and_drop = False
+        
+        self.image = None
+        self.bind_all('<B1-Motion>', lambda _:_)
             
     def stop_drag_and_drop(self, event):
         self.drag_and_drop = False
@@ -97,7 +99,7 @@ class Menu(tk.Frame):
                                bg = '#A1DBCD'
                                )
         psf_object_label.bind('<Button-1>', controller.start_drag_and_drop)
-        psf_object_label.grid(row=0, column=0, padx=25, in_=lf_creation)
+        psf_object_label.grid(row=0, column=0, padx=55, in_=lf_creation)
         
         lf_projection = ttk.Labelframe(
                                        self, 
@@ -106,14 +108,14 @@ class Menu(tk.Frame):
                                        )
         lf_projection.grid(row=1, column=0, padx=5, pady=5)
         
-        self.projection_list = ttk.Combobox(self, width=15)
+        self.projection_list = ttk.Combobox(self, width=18)
         self.projection_list['values'] = tuple(controller.map.projections)
         self.projection_list.current(0)
         self.projection_list.grid(row=0, column=0, in_=lf_projection)
         
         change_projection_button = ttk.Button(self, text='Change projection',
-                                    command=controller.map.change_projection)
-        change_projection_button.grid(row=1, column=0, in_=lf_projection)
+                            command=controller.map.change_projection, width=20)
+        change_projection_button.grid(row=1, column=0, pady=5, in_=lf_projection)
         
 class Map(tk.Canvas):
     
@@ -214,7 +216,7 @@ class Map(tk.Canvas):
     def redraw_nodes(self):
         for node_id, node in self.node_id_to_node.items():
             cx, cy = self.to_canvas_coordinates(node.longitude, node.latitude)
-            node.x, node.y = cx - 10, cy - 10
+            node.x, node.y = cx, cy
             self.coords(node_id, cx, cy)
             self.update_node_label(node)
             self.tag_raise(node_id)
@@ -232,13 +234,13 @@ class Map(tk.Canvas):
         # we update all node's coordinates
         for node_id, node in self.node_id_to_node.items():
             node.x, node.y = self.coords(node_id)
-            self.update_node_label(node, 10)
+            self.update_node_label(node)
             
-    def update_node_label(self, node, translate=0):
+    def update_node_label(self, node):
         node.longitude, node.latitude = self.to_geographical_coordinates(
                                                                 node.x, node.y)
         label = '({:.5f}, {:.5f})'.format(node.longitude, node.latitude)
-        self.coords(node.label_id, node.x - 5 + translate, node.y + 30 + translate)
+        self.coords(node.label_id, node.x - 5, node.y + 30)
         self.itemconfig(node.label_id, text=label)
                        
     def drag_and_drop(self, event):
@@ -250,10 +252,9 @@ class Map(tk.Canvas):
     def create_object(self, event):
         # create the node's image
         id = self.create_image(
-                               event.x - 10, 
-                               event.y - 10,
-                               image = controller.node_image, 
-                               anchor = 'nw', 
+                               event.x, 
+                               event.y,
+                               image = controller.node_image,
                                tags = ('node',)
                                )
         # create the node's label
@@ -262,7 +263,7 @@ class Map(tk.Canvas):
                                     event.y + 30
                                     )
         # create the node object
-        node = PSF_Object(id, label_id, event.x - 10, event.y - 10)
+        node = PSF_Object(id, label_id, event.x, event.y)
         # update the value of its label
         self.update_node_label(node)
         # store the node in the (node ID -> node) dictionnary
@@ -349,8 +350,8 @@ class Map(tk.Canvas):
             # we find the position of the fourth vertix.
             x0, y0 = self.start_pos_main_node
             x1, y1 = self.dict_start_position[selected_node]
-            selected_node.x = x1 + (event.x - x0) - 10
-            selected_node.y = y1 + (event.y - y0) - 10
+            selected_node.x = x1 + (event.x - x0)
+            selected_node.y = y1 + (event.y - y0)
             # move the node itself
             self.coords(
                         selected_node.id, 

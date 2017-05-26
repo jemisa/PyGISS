@@ -23,13 +23,11 @@ if path_app not in sys.path:
     sys.path.append(path_app)
     
 class Controller(tk.Tk):
-    
-    size = 10
-    
+        
     def __init__(self, path_app):
         super().__init__()
         self.title('Extended PyGISS: A full-on GIS software')
-        path_icon = abspath(join(path_app, 'icons'))
+        path_icon = abspath(join(path_app, 'images'))
         
         # generate the PSF tk images
         img_psf = ImageTk.Image.open(join(
@@ -44,8 +42,8 @@ class Controller(tk.Tk):
                                           )
                                     )
         self.psf_button_image = ImageTk.PhotoImage(img_psf.resize((100, 100)))
-        self.node_image = ImageTk.PhotoImage(img_psf.resize((20, 20)))
-        self.selected_node_image = ImageTk.PhotoImage(selected_img_psf.resize((20, 20)))
+        self.node_image = ImageTk.PhotoImage(img_psf.resize((40, 40)))
+        self.selected_node_image = ImageTk.PhotoImage(selected_img_psf.resize((40, 40)))
         
         for widget in (
                        'Button',
@@ -116,6 +114,21 @@ class Menu(tk.Frame):
         change_projection_button = ttk.Button(self, text='Change projection',
                             command=controller.map.change_projection, width=20)
         change_projection_button.grid(row=1, column=0, pady=5, in_=lf_projection)
+        
+        lf_map_management = ttk.Labelframe(
+                                        self, 
+                                        text = 'Map management', 
+                                        padding = (6, 6, 12, 12)
+                                        )
+        lf_map_management.grid(row=2, column=0, padx=5, pady=5)
+        
+        delete_map = ttk.Button(self, text='Delete map',
+                            command=controller.map.delete_map, width=20)
+        delete_map.grid(row=0, column=0, pady=5, in_=lf_map_management)
+        
+        delete_selection = ttk.Button(self, text='Delete selected nodes',
+                            command=controller.map.delete_selected_nodes, width=20)
+        delete_selection.grid(row=1, column=0, pady=5, in_=lf_map_management)
         
 class PSF_Object():
     
@@ -206,6 +219,16 @@ class Map(tk.Canvas):
                                     tags = ('land',)
                                     )
         self.redraw_nodes()
+        
+    def delete_map(self):
+        self.delete('land', 'water')
+        self.filepath = None
+        
+    def delete_selected_nodes(self):
+        for node in self.selected_nodes:
+            self.node_id_to_node.pop(node.id)
+            self.delete(node.id, node.label_id)
+        self.selected_nodes.clear()
 
     def draw_water(self):
         if self.proj == 'Mercator':

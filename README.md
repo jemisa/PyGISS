@@ -25,10 +25,9 @@ pip install pyproj
 The extended PyGISS version also uses ImageTk from Pillow:
 
 ```
-pip install Pillow
-```
-sudo apt-get install python3-tk
-sudo apt-get install python3-pil.imagetk
+pip install Pillow (windows)
+sudo apt-get install python3-tk (unix)
+sudo apt-get install python3-pil.imagetk (unix)
 ```
 
 # PyGISS versions

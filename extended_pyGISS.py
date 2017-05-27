@@ -1,5 +1,6 @@
 import sys
 import tkinter as tk
+import warnings
 from inspect import stack
 from os.path import abspath, dirname, pardir, join
 from PIL import ImageTk
@@ -13,6 +14,10 @@ except ImportError:
     tk.messagebox.showinfo('Some libraries are missing', 
                     'Pyproj, Shapefile and Shapely are required (see README)')
     sys.exit(1)
+try:
+    import xlrd
+except ImportError:
+    warnings.warn('Excel libraries missing: excel import/export disabled')
     
 # prevent python from writing *.pyc files / __pycache__ folders
 sys.dont_write_bytecode = True
@@ -85,7 +90,7 @@ class Menu(tk.Frame):
 
         lf_creation = ttk.Labelframe(
                                      self, 
-                                     text = 'Object creation', 
+                                     text = 'Object management', 
                                      padding = (6, 6, 12, 12)
                                      )
         lf_creation.grid(row=0, column=0, padx=5, pady=5)
@@ -97,7 +102,11 @@ class Menu(tk.Frame):
                                bg = '#A1DBCD'
                                )
         psf_object_label.bind('<Button-1>', controller.start_drag_and_drop)
-        psf_object_label.grid(row=0, column=0, padx=55, in_=lf_creation)
+        psf_object_label.grid(row=0, column=0, pady=10, padx=55, in_=lf_creation)
+        
+        import_nodes_button = ttk.Button(self, text='Import nodes',
+                            command=controller.map.import_nodes, width=20)
+        import_nodes_button.grid(row=2, column=0, pady=5, in_=lf_creation)
         
         lf_projection = ttk.Labelframe(
                                        self, 
@@ -275,28 +284,28 @@ class Map(tk.Canvas):
         label = '({:.5f}, {:.5f})'.format(node.longitude, node.latitude)
         self.coords(node.label_id, node.x - 5, node.y + 30)
         self.itemconfig(node.label_id, text=label)
-                       
+           
+    @update_coordinates            
     def drag_and_drop(self, event):
         if controller.drag_and_drop:
-            self.create_object(event)
+            self.create_object(event.x, event.y)
             controller.drag_and_drop = False
-                        
-    @update_coordinates
-    def create_object(self, event):
+                
+    def create_object(self, x, y):
         # create the node's image
         id = self.create_image(
-                               event.x, 
-                               event.y,
+                               x, 
+                               y,
                                image = controller.node_image,
                                tags = ('node',)
                                )
         # create the node's label
         label_id = self.create_text(
-                                    event.x - 5, 
-                                    event.y + 30
+                                    x - 5, 
+                                    y + 30
                                     )
         # create the node object
-        node = PSF_Object(id, label_id, event.x, event.y)
+        node = PSF_Object(id, label_id, x, y)
         # update the value of its label
         self.update_node_label(node)
         # store the node in the (node ID -> node) dictionnary
@@ -393,6 +402,22 @@ class Map(tk.Canvas):
                         )
             # update the label
             self.update_node_label(selected_node)
+            
+    def import_nodes(self):
+        filepath = filedialog.askopenfilenames(filetypes = (('xls files','*.xls'),))
+        if not filepath:
+            return
+        else:
+            filepath ,= filepath
+        book = xlrd.open_workbook(filepath)
+        try:
+            sheet = book.sheet_by_index(0)
+        # if the sheet cannot be found, there's nothing to import
+        except xlrd.biffh.XLRDError:
+            warnings.warn('the excel file is empty: import failed')
+        for row_index in range(1, sheet.nrows):
+            x, y = self.to_canvas_coordinates(*sheet.row_values(row_index))
+            self.create_object(x, y)
         
 if str.__eq__(__name__, '__main__'):
     controller = Controller(path_app)

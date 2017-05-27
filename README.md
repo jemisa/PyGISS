@@ -11,7 +11,7 @@ It allows users to create maps by importing shapefiles (.shp files), a format th
 PyGIS relies on three Python libraries:
 
 * pyshp, used for reading shapefiles.
-* shapely, used for converting a multipolygons into a set of polygons
+* shapely, used for converting a multipolygon into a set of polygons
 * pyproj, used for translating geographic coordinates (longitude and latitude) into projected coordinates
 
 Before using PyGISS, you must make sure all these libraries are properly installed:
@@ -25,9 +25,9 @@ pip install pyproj
 The extended PyGISS version also uses ImageTk from Pillow:
 
 ```
-pip install Pillow (windows)
 sudo apt-get install python3-tk (unix)
 sudo apt-get install python3-pil.imagetk (unix)
+pip install pillow (windows & unix)
 ```
 
 # PyGISS versions
@@ -47,12 +47,15 @@ The following bindings are implemented:
 * the scroll wheel can be used for zooming in and out.
 * pressing the left-click button on the map will print the associated geographical coordinates (longitude, latitude).
 
+A few shapefiles are available for testing in the 'PyGISS/shapefiles' folder (world countries, continents, France, US).
+
 ## Extended version (extended_pyGISS.py, < 500 lines)
 
 ![extended pyGISS](https://github.com/afourmy/PyGISS/blob/master/images/extended_pyGISS.PNG)
 
 The extended version shows how to use PyGISS to create a full-on GIS software.
 Besides the import of shapefiles, nodes can be created with a "Drag & Drop" system, moved on the map, and deleted.
+They can also be imported by creating an Excel file that contains the longitude and latitude of the nodes. (an example is available in the 'PyGISS/import' folder'.
 
 To create a node, press the left-click button on the Python Software Foundation icon in the menu, and hold it down until you've reached the desired location on the canvas.
 Pressing the left-click button on the canvas allows the user to either select one or several nodes, or move all selected nodes.

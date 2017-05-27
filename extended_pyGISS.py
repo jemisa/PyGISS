@@ -101,7 +101,7 @@ class Menu(tk.Frame):
         
         lf_projection = ttk.Labelframe(
                                        self, 
-                                       text = 'Projection settings', 
+                                       text = 'Projection management', 
                                        padding = (6, 6, 12, 12)
                                        )
         lf_projection.grid(row=1, column=0, padx=5, pady=5)

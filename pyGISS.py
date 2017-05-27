@@ -1,15 +1,8 @@
 import tkinter as tk
 from tkinter import filedialog
-try:
-    import pyproj
-    import shapefile
-    import shapely.geometry
-except ImportError:
-    import sys
-    from tkinter import messagebox
-    tk.messagebox.showinfo('Some libraries are missing', 
-                    'Pyproj, Shapefile and Shapely are required (see README)')
-    sys.exit(1)
+import pyproj
+import shapefile
+import shapely.geometry
 
 class Map(tk.Canvas):
 
